@@ -1,4 +1,4 @@
-Vehicle Fuel Consumption Predictor
+**Vehicle Fuel Consumption Predictor
 An end-to-end Machine Learning web application for predicting vehicle fuel consumption (L/100 km) and estimating real-world trip costs. Built with Streamlit and powered by Random Forest Regressors, the app allows users to either input global vehicle specifications manually or select from a pre-loaded database of popular Iranian cars.
 
 Key Features
