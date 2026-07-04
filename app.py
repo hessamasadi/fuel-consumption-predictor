@@ -4,15 +4,12 @@ import joblib
 import requests
 from io import BytesIO
 
-# --- 1. Hugging Face URLs ---
 BASE_URL = "https://huggingface.co/hessamedin/fuel-consumption-predictor/resolve/main"
 CITY_MODEL_URL = f"{BASE_URL}/city_model.pkl"
 HIGHWAY_MODEL_URL = f"{BASE_URL}/highway_model.pkl"
 COMBINED_MODEL_URL = f"{BASE_URL}/combined_model.pkl"
 CSV_URL = f"{BASE_URL}/Fuel_Consumption_Cleaned.csv"
 
-# --- 2. Caching Data and Models (Optimized for Streamlit) ---
-# این توابع باعث می‌شوند فایل‌ها فقط یک بار دانلود شوند و در حافظه کش شوند
 @st.cache_data(ttl=86400)
 def load_data():
     response = requests.get(CSV_URL)
@@ -25,17 +22,14 @@ def load_models():
     combined = joblib.load(BytesIO(requests.get(COMBINED_MODEL_URL).content))
     return city, highway, combined
 
-# Load data and models
 df = load_data()
 model_city, model_highway, model_combined = load_models()
 
-# --- 3. Preprocessing Setup ---
 features_to_keep = ['VEHICLE CLASS', 'ENGINE SIZE', 'CYLINDERS', 'TRANSMISSION', 'FUEL']
 X = df[features_to_keep]
 X_encoded = pd.get_dummies(X, columns=['VEHICLE CLASS', 'TRANSMISSION', 'FUEL'], drop_first=True)
 train_columns = X_encoded.columns
 
-# --- 4. Iranian Cars Database ---
 iranian_cars_db = {
     "پراید (111/131/132)": {"ENGINE SIZE": 1.3, "CYLINDERS": 4, "TRANSMISSION": "M5", "FUEL": "X", "VEHICLE CLASS": "SUBCOMPACT", "desc": "خودروی اقتصادی و کم‌مصرف شهری"},
     "تیبا (هاچ‌بک/صندوق‌دار)": {"ENGINE SIZE": 1.5, "CYLINDERS": 4, "TRANSMISSION": "M5", "FUEL": "X", "VEHICLE CLASS": "SUBCOMPACT", "desc": "نسخه ارتقا یافته پراید با موتور قوی‌تر"},
@@ -52,7 +46,6 @@ iranian_cars_db = {
     "شاهین (توربو)": {"ENGINE SIZE": 1.5, "CYLINDERS": 4, "TRANSMISSION": "M5", "FUEL": "X", "VEHICLE CLASS": "COMPACT", "desc": "سدان اسپرت سایپا با موتور 1.5 لیتری توربو"}
 }
 
-# --- 5. Cost Calculator ---
 def calculate_fuel_cost(fuel_needed, already_used):
     cost = 0
     remaining_fuel = fuel_needed
@@ -77,7 +70,6 @@ def calculate_fuel_cost(fuel_needed, already_used):
         
     return cost
 
-# --- 6. UI Setup ---
 st.title('Vehicle Fuel Consumption Predictor')
 st.write('Predict fuel consumption (L/100 km) using global data or popular Iranian car specs.')
 
@@ -105,7 +97,6 @@ def predict_fuel(input_data, model):
     input_encoded = input_encoded.reindex(columns=train_columns, fill_value=0)
     return model.predict(input_encoded)[0]
 
-# --- 7. Iranian Cars Mode ---
 if mode == "🇮🇷 خودروهای ایرانی":
     st.markdown("<h3 style='text-align: right; direction: rtl;'>انتخاب خودروی ایرانی</h3>", unsafe_allow_html=True)
     
@@ -136,14 +127,13 @@ if mode == "🇮🇷 خودروهای ایرانی":
         st.success(f'### مصرف سوخت پیش‌بینی شده برای {selected_car}: {prediction:.2f} لیتر در هر ۱۰۰ کیلومتر')
         st.info(f'برای مسافت **{distance_km} کیلومتر**، این خودرو حدود **{total_fuel:.2f} لیتر** بنزین مصرف خواهد کرد.\n **هزینه تقریبی سوخت برای این سفر:** **{total_cost:,.0f} تومان**')
         
-        with st.expander("🔍 مشاهده مشخصات فنی استفاده شده در این پیش‌بینی"):
+        with st.expander("مشاهده مشخصات فنی استفاده شده در این پیش‌بینی"):
             st.write(f"**حجم موتور:** {specs['ENGINE SIZE']} لیتر")
             st.write(f"**تعداد سیلندر:** {specs['CYLINDERS']}")
             st.write(f"**نوع گیربکس:** {specs['TRANSMISSION']}")
             st.write(f"**نوع سوخت:** {specs['FUEL']} (بنزین معمولی)")
             st.write(f"**کلاس جهانی معادل:** {specs['VEHICLE CLASS']}")
 
-# --- 8. Global Mode ---
 else:
     st.subheader("Enter Vehicle Specifications Manually")
     
