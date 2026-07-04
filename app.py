@@ -1,20 +1,41 @@
 import streamlit as st
 import pandas as pd
 import joblib
-from huggingface_hub import hf_hub_download
+import requests
+from io import BytesIO
 
-repo_id = "hessamedin/fuel-consumption-predictor"
+# --- 1. Hugging Face URLs ---
+BASE_URL = "https://huggingface.co/hessamedin/fuel-consumption-predictor/resolve/main"
+CITY_MODEL_URL = f"{BASE_URL}/city_model.pkl"
+HIGHWAY_MODEL_URL = f"{BASE_URL}/highway_model.pkl"
+COMBINED_MODEL_URL = f"{BASE_URL}/combined_model.pkl"
+CSV_URL = f"{BASE_URL}/Fuel_Consumption_Cleaned.csv"
 
-model_city = joblib.load(hf_hub_download(repo_id, "city_model.pkl"))
-model_highway = joblib.load(hf_hub_download(repo_id, "highway_model.pkl"))
-model_combined = joblib.load(hf_hub_download(repo_id, "combined_model.pkl"))
-df = pd.read_csv(hf_hub_download(repo_id, "Fuel_Consumption_Cleaned.csv"))
+# --- 2. Caching Data and Models (Optimized for Streamlit) ---
+# این توابع باعث می‌شوند فایل‌ها فقط یک بار دانلود شوند و در حافظه کش شوند
+@st.cache_data(ttl=86400)
+def load_data():
+    response = requests.get(CSV_URL)
+    return pd.read_csv(BytesIO(response.content))
 
+@st.cache_resource(ttl=86400)
+def load_models():
+    city = joblib.load(BytesIO(requests.get(CITY_MODEL_URL).content))
+    highway = joblib.load(BytesIO(requests.get(HIGHWAY_MODEL_URL).content))
+    combined = joblib.load(BytesIO(requests.get(COMBINED_MODEL_URL).content))
+    return city, highway, combined
+
+# Load data and models
+df = load_data()
+model_city, model_highway, model_combined = load_models()
+
+# --- 3. Preprocessing Setup ---
 features_to_keep = ['VEHICLE CLASS', 'ENGINE SIZE', 'CYLINDERS', 'TRANSMISSION', 'FUEL']
 X = df[features_to_keep]
 X_encoded = pd.get_dummies(X, columns=['VEHICLE CLASS', 'TRANSMISSION', 'FUEL'], drop_first=True)
 train_columns = X_encoded.columns
 
+# --- 4. Iranian Cars Database ---
 iranian_cars_db = {
     "پراید (111/131/132)": {"ENGINE SIZE": 1.3, "CYLINDERS": 4, "TRANSMISSION": "M5", "FUEL": "X", "VEHICLE CLASS": "SUBCOMPACT", "desc": "خودروی اقتصادی و کم‌مصرف شهری"},
     "تیبا (هاچ‌بک/صندوق‌دار)": {"ENGINE SIZE": 1.5, "CYLINDERS": 4, "TRANSMISSION": "M5", "FUEL": "X", "VEHICLE CLASS": "SUBCOMPACT", "desc": "نسخه ارتقا یافته پراید با موتور قوی‌تر"},
@@ -31,6 +52,7 @@ iranian_cars_db = {
     "شاهین (توربو)": {"ENGINE SIZE": 1.5, "CYLINDERS": 4, "TRANSMISSION": "M5", "FUEL": "X", "VEHICLE CLASS": "COMPACT", "desc": "سدان اسپرت سایپا با موتور 1.5 لیتری توربو"}
 }
 
+# --- 5. Cost Calculator ---
 def calculate_fuel_cost(fuel_needed, already_used):
     cost = 0
     remaining_fuel = fuel_needed
@@ -55,12 +77,13 @@ def calculate_fuel_cost(fuel_needed, already_used):
         
     return cost
 
+# --- 6. UI Setup ---
 st.title('Vehicle Fuel Consumption Predictor')
 st.write('Predict fuel consumption (L/100 km) using global data or popular Iranian car specs.')
 
 mode = st.radio(
     "Select your preferred method / روش انتخاب خود را مشخص کنید:",
-    ["🇮 خودروهای ایرانی", "Global / Manual Selection"]
+    ["🇮🇷 خودروهای ایرانی", "Global / Manual Selection"]
 )
 
 st.markdown("---")
@@ -70,7 +93,7 @@ driving_mode = st.selectbox(
     ["City (شهری)", "Highway (جاده‌ای)", "Combined (ترکیبی)"]
 )
 
-if driving_mode == "️ City (شهری)":
+if driving_mode == "City (شهری)":
     current_model = model_city
 elif driving_mode == "Highway (جاده‌ای)":
     current_model = model_highway
@@ -82,6 +105,7 @@ def predict_fuel(input_data, model):
     input_encoded = input_encoded.reindex(columns=train_columns, fill_value=0)
     return model.predict(input_encoded)[0]
 
+# --- 7. Iranian Cars Mode ---
 if mode == "🇮🇷 خودروهای ایرانی":
     st.markdown("<h3 style='text-align: right; direction: rtl;'>انتخاب خودروی ایرانی</h3>", unsafe_allow_html=True)
     
@@ -110,7 +134,7 @@ if mode == "🇮🇷 خودروهای ایرانی":
         total_cost = calculate_fuel_cost(total_fuel, already_used)
         
         st.success(f'### مصرف سوخت پیش‌بینی شده برای {selected_car}: {prediction:.2f} لیتر در هر ۱۰۰ کیلومتر')
-        st.info(f'⛽ برای مسافت **{distance_km} کیلومتر**، این خودرو حدود **{total_fuel:.2f} لیتر** بنزین مصرف خواهد کرد.\n💰 **هزینه تقریبی سوخت برای این سفر:** **{total_cost:,.0f} تومان**')
+        st.info(f'برای مسافت **{distance_km} کیلومتر**، این خودرو حدود **{total_fuel:.2f} لیتر** بنزین مصرف خواهد کرد.\n **هزینه تقریبی سوخت برای این سفر:** **{total_cost:,.0f} تومان**')
         
         with st.expander("🔍 مشاهده مشخصات فنی استفاده شده در این پیش‌بینی"):
             st.write(f"**حجم موتور:** {specs['ENGINE SIZE']} لیتر")
@@ -119,6 +143,7 @@ if mode == "🇮🇷 خودروهای ایرانی":
             st.write(f"**نوع سوخت:** {specs['FUEL']} (بنزین معمولی)")
             st.write(f"**کلاس جهانی معادل:** {specs['VEHICLE CLASS']}")
 
+# --- 8. Global Mode ---
 else:
     st.subheader("Enter Vehicle Specifications Manually")
     
@@ -160,7 +185,7 @@ else:
         total_fuel = round((prediction / 100) * distance_km, 2)
         
         st.success(f'### Predicted Fuel Consumption: {prediction:.2f} L/100 km')
-        st.info(f' For a distance of **{distance_km} km**, this vehicle will consume approximately **{total_fuel:.2f} Liters** of fuel.')
+        st.info(f'For a distance of **{distance_km} km**, this vehicle will consume approximately **{total_fuel:.2f} Liters** of fuel.')
 
 st.markdown("---")
 st.caption("**Note:** Predictions are estimates based on mechanical equivalents in the global dataset. Fuel costs (for Iranian cars) are calculated based on Iran's current 3-tier smart card pricing (1500T/3000T/5000T). / پیش‌بینی‌ها بر اساس معادل‌های جهانی هستند و هزینه سوخت (برای خودروهای ایرانی) بر اساس قانون سهمیه‌بندی سه نرخی کارت سوخت محاسبه می‌شود.")
